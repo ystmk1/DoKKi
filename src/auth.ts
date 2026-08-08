@@ -48,6 +48,25 @@ export async function signInWith(provider: AuthProvider): Promise<void> {
   });
 }
 
+/**
+ * Email magic-link sign-in: sends an invite/login link to `email`.
+ * The HTML the user receives is the "Magic Link" template configured in
+ * Supabase (see supabase/templates/magic-link.html); clicking the link
+ * returns here and `detectSessionInUrl` completes the session.
+ * Throws with a readable message on failure (rate limit, invalid email …).
+ */
+export async function signInWithEmail(email: string): Promise<void> {
+  if (!supabase) throw new Error("클라우드 동기화가 설정되지 않았습니다.");
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: {
+      emailRedirectTo: window.location.origin,
+      shouldCreateUser: true, // first-time emails create an account (invite flow)
+    },
+  });
+  if (error) throw new Error(error.message);
+}
+
 export async function signOut(): Promise<void> {
   if (!supabase) return;
   await supabase.auth.signOut();

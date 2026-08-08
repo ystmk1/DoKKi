@@ -9,6 +9,7 @@ import {
   loadBooks,
   uploadNotes,
   deleteNote,
+  deleteNotes,
   isDemoPath,
   getNoteRaw,
   saveNoteContent,
@@ -62,7 +63,7 @@ async function handleDelete(filename: string) {
 }
 
 async function handleDeleteMany(filenames: string[]) {
-  for (const f of filenames) await deleteNote(f);
+  await deleteNotes(filenames);
   await refresh();
 }
 
@@ -80,7 +81,8 @@ function dismissSplash(): void {
     splash.remove();
     return;
   }
-  const MIN_DWELL_MS = 1800;
+  const MIN_DWELL_MS = 1200; // 로고만 보여주는 스플래시 — 짧게
+
   setTimeout(() => {
     splash.classList.add("is-leaving");
     const onEnd = () => splash.remove();

@@ -1,12 +1,14 @@
 import { BookNote, GraphBasis } from "./types";
-import { renderGraph, type GraphHandle } from "./graphView";
+// three.js를 쓰는 두 뷰(큐브·은하)는 동적 import — 메인 번들에서 three가
+// 빠지고, 그래프가 실제로 그려질 때만 로드된다.
+import type { GraphHandle } from "./graphView";
 import { renderBookStack } from "./bookStack";
 import { tagLeafOf } from "./parser-core";
 import { searchBooks, NlBookResult } from "./nl-api";
 import { getMetadata, setMetadata, clearMetadata, setCoverColor, effectiveTags } from "./note-metadata";
 import { kdcTagsFromCallNo } from "./kdc";
 import { isCloudEnabled } from "./supabase";
-import { signInWith, signOut, userLabel, getUser } from "./auth";
+import { signInWith, signInWithEmail, signOut, userLabel, getUser } from "./auth";
 import { extractCoverColor } from "./cover-color";
 import { getWishlist, addWishlist, removeWishlist, type WishItem } from "./wishlist";
 import { getMemo, setMemo, memoBolds } from "./memos";
@@ -48,7 +50,8 @@ export function mountWebView({
     filterStatuses: new Set<string>(),
     filterRatings: new Set<string>(),
     search: "",
-    graphBasis: "off",
+    // 연결(저자+태그)이 기본 — 연관성을 보여주는 게 이 뷰의 존재 이유다.
+    graphBasis: "both",
   };
   let graph: GraphHandle | null = null;
   let lastOpenedBook: BookNote | null = null;
@@ -106,6 +109,38 @@ export function mountWebView({
   const graphWrap = document.createElement("div");
   graphWrap.className = "dokki-graph-wrap";
   graphSection.appendChild(graphWrap);
+  // 큐브(좌표 지도) ↔ 은하(관계 성단) 전환. 큐브가 기본 — 서비스의 초점.
+  const GRAPH_VIEW_KEY = "dokki:graph-view:v1";
+  type GraphViewMode = "cube" | "galaxy";
+  let graphView: GraphViewMode = (() => {
+    try {
+      return localStorage.getItem(GRAPH_VIEW_KEY) === "galaxy" ? "galaxy" : "cube";
+    } catch {
+      return "cube";
+    }
+  })();
+  const graphToggle = document.createElement("div");
+  graphToggle.className = "dokki-graph-toggle";
+  const viewBtns = new Map<GraphViewMode, HTMLButtonElement>();
+  for (const [mode, text] of [["cube", "큐브"], ["galaxy", "은하"]] as Array<[GraphViewMode, string]>) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "dokki-graph-toggle-btn";
+    btn.textContent = text;
+    btn.addEventListener("click", () => {
+      if (graphView === mode) return;
+      graphView = mode;
+      try {
+        localStorage.setItem(GRAPH_VIEW_KEY, mode);
+      } catch {
+        /* storage disabled */
+      }
+      renderGraphSection();
+    });
+    viewBtns.set(mode, btn);
+    graphToggle.appendChild(btn);
+  }
+  graphSection.appendChild(graphToggle);
   mount.appendChild(graphSection);
 
   // Upload button lives in the controls bar (right of the filter); it's a
@@ -127,114 +162,68 @@ export function mountWebView({
   const wishWrap = document.createElement("section");
   wishWrap.className = "dokki-wishlist";
 
-  // Drag a marquee across the spines to select several at once (own notes
-  // only); right-clicking the selection then offers a bulk delete.
-  const marquee = document.createElement("div");
-  marquee.className = "dokki-marquee";
-  marquee.style.display = "none";
-  stackWrap.appendChild(marquee);
+  // Drag a marquee across rows to select several at once (own notes only);
+  // right-clicking the selection then offers a bulk delete. Shared by the book
+  // stack (.dokki-spine) and the 조각 list (.dokki-nf-row). Desktop-only — on
+  // mobile (touch / narrow layout) it fights with scrolling, so leave taps to
+  // open notes as usual.
+  function attachMarquee(wrap: HTMLElement, rowSelector: string): HTMLElement {
+    const marquee = document.createElement("div");
+    marquee.className = "dokki-marquee";
+    marquee.style.display = "none";
+    wrap.appendChild(marquee);
 
-  stackWrap.addEventListener("pointerdown", (e) => {
-    if (e.button !== 0 || !isCloudEnabled || !getUser()) return;
-    // Marquee drag-select is desktop-only — on mobile (touch / narrow layout)
-    // it fights with scrolling, so leave taps to open notes as usual.
-    if (e.pointerType === "touch" || window.matchMedia("(max-width: 768px)").matches) return;
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const fromSpine = (e.target as HTMLElement).closest(".dokki-spine");
-    let moved = false;
+    wrap.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || !isCloudEnabled || !getUser()) return;
+      if (e.pointerType === "touch" || window.matchMedia("(max-width: 768px)").matches) return;
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const fromRow = (e.target as HTMLElement).closest(rowSelector);
+      let moved = false;
 
-    const move = (ev: PointerEvent) => {
-      if (!moved && Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) < 6) return;
-      if (!moved) {
-        moved = true;
-        suppressOpen = true; // the trailing click shouldn't open a note
-        marquee.style.display = "block";
-      }
-      const minX = Math.min(startX, ev.clientX);
-      const maxX = Math.max(startX, ev.clientX);
-      const minY = Math.min(startY, ev.clientY);
-      const maxY = Math.max(startY, ev.clientY);
-      const wr = stackWrap.getBoundingClientRect();
-      marquee.style.left = `${minX - wr.left}px`;
-      marquee.style.top = `${minY - wr.top}px`;
-      marquee.style.width = `${maxX - minX}px`;
-      marquee.style.height = `${maxY - minY}px`;
-      selectedPaths.clear();
-      stackWrap.querySelectorAll<HTMLElement>(".dokki-spine").forEach((row) => {
-        const r = row.getBoundingClientRect();
-        const hit = r.left < maxX && r.right > minX && r.top < maxY && r.bottom > minY;
-        const path = row.dataset.path;
-        if (hit && path && !isDemoPath(path)) selectedPaths.add(path);
-      });
-      applySelectionClasses();
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      marquee.style.display = "none";
-      // A plain click on empty space clears the selection.
-      if (!moved && !fromSpine && selectedPaths.size) {
+      const move = (ev: PointerEvent) => {
+        if (!moved && Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) < 6) return;
+        if (!moved) {
+          moved = true;
+          suppressOpen = true; // the trailing click shouldn't open a note
+          marquee.style.display = "block";
+        }
+        const minX = Math.min(startX, ev.clientX);
+        const maxX = Math.max(startX, ev.clientX);
+        const minY = Math.min(startY, ev.clientY);
+        const maxY = Math.max(startY, ev.clientY);
+        const wr = wrap.getBoundingClientRect();
+        marquee.style.left = `${minX - wr.left}px`;
+        marquee.style.top = `${minY - wr.top}px`;
+        marquee.style.width = `${maxX - minX}px`;
+        marquee.style.height = `${maxY - minY}px`;
         selectedPaths.clear();
+        wrap.querySelectorAll<HTMLElement>(rowSelector).forEach((row) => {
+          const r = row.getBoundingClientRect();
+          const hit = r.left < maxX && r.right > minX && r.top < maxY && r.bottom > minY;
+          const path = row.dataset.path;
+          if (hit && path && !isDemoPath(path)) selectedPaths.add(path);
+        });
         applySelectionClasses();
-      }
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  });
+      };
+      const up = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        marquee.style.display = "none";
+        // A plain click on empty space clears the selection.
+        if (!moved && !fromRow && selectedPaths.size) {
+          selectedPaths.clear();
+          applySelectionClasses();
+        }
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+    });
+    return marquee;
+  }
 
-  // Marquee drag-select for the 조각 cards too — same flow as the book stack
-  // (desktop-only, bulk delete via right-click).
-  const nfMarquee = document.createElement("div");
-  nfMarquee.className = "dokki-marquee";
-  nfMarquee.style.display = "none";
-  nonfictionWrap.appendChild(nfMarquee);
-
-  nonfictionWrap.addEventListener("pointerdown", (e) => {
-    if (e.button !== 0 || !isCloudEnabled || !getUser()) return;
-    if (e.pointerType === "touch" || window.matchMedia("(max-width: 768px)").matches) return;
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const fromRow = (e.target as HTMLElement).closest(".dokki-nf-row");
-    let moved = false;
-
-    const move = (ev: PointerEvent) => {
-      if (!moved && Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) < 6) return;
-      if (!moved) {
-        moved = true;
-        suppressOpen = true;
-        nfMarquee.style.display = "block";
-      }
-      const minX = Math.min(startX, ev.clientX);
-      const maxX = Math.max(startX, ev.clientX);
-      const minY = Math.min(startY, ev.clientY);
-      const maxY = Math.max(startY, ev.clientY);
-      const wr = nonfictionWrap.getBoundingClientRect();
-      nfMarquee.style.left = `${minX - wr.left}px`;
-      nfMarquee.style.top = `${minY - wr.top}px`;
-      nfMarquee.style.width = `${maxX - minX}px`;
-      nfMarquee.style.height = `${maxY - minY}px`;
-      selectedPaths.clear();
-      nonfictionWrap.querySelectorAll<HTMLElement>(".dokki-nf-row").forEach((row) => {
-        const r = row.getBoundingClientRect();
-        const hit = r.left < maxX && r.right > minX && r.top < maxY && r.bottom > minY;
-        const path = row.dataset.path;
-        if (hit && path && !isDemoPath(path)) selectedPaths.add(path);
-      });
-      applySelectionClasses();
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      nfMarquee.style.display = "none";
-      if (!moved && !fromRow && selectedPaths.size) {
-        selectedPaths.clear();
-        applySelectionClasses();
-      }
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  });
+  const marquee = attachMarquee(stackWrap, ".dokki-spine");
+  const nfMarquee = attachMarquee(nonfictionWrap, ".dokki-nf-row");
 
   // Pressing anywhere else clears the selection — except on an already-selected
   // spine / 조각 row (so you can right-click it) or inside the context menu.
@@ -793,17 +782,23 @@ export function mountWebView({
     document.body.appendChild(overlay);
   }
 
-  function openSearch(b: BookNote) {
+  // Shared book-search dialog: overlay + title + search form + result cards.
+  // Used by 서지정보 검색 (link metadata to a note) and the wishlist search;
+  // only the title, initial query and pick behavior differ.
+  function openBookSearchDialog(opts: {
+    title: string;
+    initialQuery?: string;
+    onPick: (r: NlBookResult, card: HTMLButtonElement, closeOverlay: () => void) => void;
+  }): void {
     const overlay = document.createElement("div");
     overlay.className = "dokki-search-overlay";
-
     const dialog = document.createElement("div");
     dialog.className = "dokki-search-dialog";
 
     const head = document.createElement("div");
     head.className = "dokki-search-head";
     const heading = document.createElement("h3");
-    heading.textContent = "서지정보 검색";
+    heading.textContent = opts.title;
     head.appendChild(heading);
     const closeBtn = document.createElement("button");
     closeBtn.className = "dokki-panel-close";
@@ -817,9 +812,8 @@ export function mountWebView({
     const input = document.createElement("input");
     input.type = "search";
     input.className = "dokki-search-input";
-    input.value = b.title;
+    input.value = opts.initialQuery ?? "";
     input.placeholder = "제목·저자·키워드";
-    input.autofocus = true;
     form.appendChild(input);
     const submit = document.createElement("button");
     submit.type = "submit";
@@ -831,7 +825,6 @@ export function mountWebView({
     const status = document.createElement("div");
     status.className = "dokki-search-status";
     dialog.appendChild(status);
-
     const results = document.createElement("div");
     results.className = "dokki-search-results";
     dialog.appendChild(results);
@@ -844,7 +837,6 @@ export function mountWebView({
     setTimeout(() => input.focus(), 50);
 
     let currentAbort: AbortController | null = null;
-
     const run = async () => {
       const q = input.value.trim();
       if (!q) return;
@@ -861,27 +853,30 @@ export function mountWebView({
           return;
         }
         status.textContent = `${data.total}건 중 ${data.results.length}건 표시`;
-        for (const r of data.results) results.appendChild(renderResultCard(r, b));
+        for (const r of data.results) results.appendChild(renderCard(r));
       } catch (e) {
         submit.disabled = false;
         if ((e as Error).name === "AbortError") return;
         status.textContent = `오류: ${(e as Error).message}`;
       }
     };
-
     form.addEventListener("submit", (e) => {
       e.preventDefault();
       void run();
     });
-    void run();
+    if (input.value.trim()) void run();
 
-    function renderResultCard(r: NlBookResult, note: BookNote): HTMLElement {
+    function renderCard(r: NlBookResult): HTMLElement {
       const card = document.createElement("button");
       card.className = "dokki-search-card";
       card.type = "button";
 
       const coverBox = document.createElement("div");
       coverBox.className = "dokki-search-cover";
+      const coverFallback = () => {
+        coverBox.textContent = (r.title[0] ?? "?").toUpperCase();
+        coverBox.classList.add("dokki-search-cover-fallback");
+      };
       if (r.coverUrl) {
         const img = document.createElement("img");
         img.src = r.coverUrl;
@@ -889,13 +884,11 @@ export function mountWebView({
         img.loading = "lazy";
         img.addEventListener("error", () => {
           img.remove();
-          coverBox.textContent = (r.title[0] ?? "?").toUpperCase();
-          coverBox.classList.add("dokki-search-cover-fallback");
+          coverFallback();
         });
         coverBox.appendChild(img);
       } else {
-        coverBox.textContent = (r.title[0] ?? "?").toUpperCase();
-        coverBox.classList.add("dokki-search-cover-fallback");
+        coverFallback();
       }
       card.appendChild(coverBox);
 
@@ -905,13 +898,9 @@ export function mountWebView({
       t.className = "dokki-search-card-title";
       t.textContent = r.title;
       text.appendChild(t);
-      const subBits: string[] = [];
-      if (r.author) subBits.push(r.author);
-      if (r.publisher) subBits.push(r.publisher);
-      if (r.pubYear) subBits.push(r.pubYear);
       const s = document.createElement("div");
       s.className = "dokki-search-card-sub";
-      s.textContent = subBits.join(" · ");
+      s.textContent = [r.author, r.publisher, r.pubYear].filter(Boolean).join(" · ");
       text.appendChild(s);
       if (r.isbn) {
         const i = document.createElement("div");
@@ -921,24 +910,32 @@ export function mountWebView({
       }
       card.appendChild(text);
 
-      card.addEventListener("click", () => {
-        const meta = setMetadata(note.filePath, r);
-        overlay.remove();
+      card.addEventListener("click", () => opts.onPick(r, card, () => overlay.remove()));
+      return card;
+    }
+  }
+
+  function openSearch(b: BookNote) {
+    openBookSearchDialog({
+      title: "서지정보 검색",
+      initialQuery: b.title,
+      onPick: (r, _card, closeOverlay) => {
+        const meta = setMetadata(b.filePath, r);
+        closeOverlay();
         const inner = panel.querySelector(".dokki-panel-inner") as HTMLElement;
         const head = inner.querySelector(".dokki-panel-head") as HTMLElement;
-        if (head) renderHead(head, note);
+        if (head) renderHead(head, b);
         // Sample a spine tint from the cover once, then cache + re-render stack.
         if (r.coverUrl && !meta.coverColor) {
           void extractCoverColor(r.coverUrl).then((color) => {
             if (!color) return;
-            setCoverColor(note.filePath, color);
+            setCoverColor(b.filePath, color);
             renderStack();
             graph?.recolor(); // repaint the matching star with the new cover tint
           });
         }
-      });
-      return card;
-    }
+      },
+    });
   }
 
   function closePanel() {
@@ -1151,20 +1148,38 @@ export function mountWebView({
     requestAnimationFrame(() => (track.style.transition = ""));
   }
 
+  // 재렌더 경합 방지 — 로딩이 끝나기 전에 다시 렌더되면 이전 결과는 버린다.
+  let graphGen = 0;
   function renderGraphSection() {
+    const gen = ++graphGen;
     graph?.cleanup();
+    graph = null;
     graphWrap.innerHTML = "";
-    graph = renderGraph(
-      graphWrap,
-      books,
-      (path) => {
-        const b = books.find((x) => x.filePath === path);
-        if (b) openNote(b);
-      },
-      state.graphBasis,
-    );
-    updateGraphHighlight();
+    // 모바일에선 그래프 섹션이 CSS로 숨겨진다 — WebGL 컨텍스트를 만들 이유가
+    // 없으니 렌더 자체를 건너뛴다. (데스크톱 전환 시 리사이즈에서 재렌더.)
+    if (window.matchMedia("(max-width: 768px)").matches) return;
+    graphWrap.classList.toggle("is-cube", graphView === "cube");
+    viewBtns.forEach((btn, mode) => btn.classList.toggle("is-active", mode === graphView));
+    const open = (path: string) => {
+      const b = books.find((x) => x.filePath === path);
+      if (b) openNote(b);
+    };
+    const load =
+      graphView === "cube"
+        ? import("./cubeView").then((m) => m.renderCube(graphWrap, books, open, state.graphBasis))
+        : import("./graphView").then((m) => m.renderGraph(graphWrap, books, open, state.graphBasis));
+    void load.then((handle) => {
+      if (gen !== graphGen) {
+        handle.cleanup(); // 그 사이 다른 렌더가 시작됨 — 이 결과는 폐기
+        return;
+      }
+      graph = handle;
+      updateGraphHighlight();
+    });
   }
+  // 모바일 ↔ 데스크톱 경계를 넘으면 그래프를 만들거나 정리한다.
+  const graphMedia = window.matchMedia("(max-width: 768px)");
+  graphMedia.addEventListener("change", () => renderGraphSection());
 
   function updateGraphHighlight() {
     if (!graph) return;
@@ -1264,40 +1279,30 @@ export function mountWebView({
     applySelectionClasses();
   }
 
-  function openSpineMenu(b: BookNote, x: number, y: number) {
-    // Edit/delete only for the user's own uploaded notes.
-    if (!isCloudEnabled || !getUser() || isDemoPath(b.filePath)) return;
-
+  // Shared right-click context menu scaffold. Items run after the menu closes;
+  // clicking anywhere outside dismisses it.
+  interface CtxItem {
+    label: string;
+    danger?: boolean;
+    onClick: () => void;
+  }
+  function openCtxMenu(x: number, y: number, items: CtxItem[]): void {
     document.querySelector(".dokki-ctx-menu")?.remove();
     const menu = document.createElement("div");
     menu.className = "dokki-ctx-menu";
     menu.style.left = `${x}px`;
     menu.style.top = `${y}px`;
-
-    const editBtn = document.createElement("button");
-    editBtn.className = "dokki-ctx-item";
-    editBtn.textContent = "태그 수정하기";
-    editBtn.addEventListener("click", () => {
-      menu.remove();
-      openTagEditor(b);
-    });
-
-    const delBtn = document.createElement("button");
-    delBtn.className = "dokki-ctx-item dokki-ctx-danger";
-    delBtn.textContent = "삭제하기";
-    delBtn.addEventListener("click", async () => {
-      menu.remove();
-      if (!confirm(`"${b.title}" 노트를 삭제할까요? 되돌릴 수 없습니다.`)) return;
-      try {
-        await onDelete(b.filePath);
-      } catch (e) {
-        alert(`삭제 실패: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    });
-
-    menu.append(editBtn, delBtn);
+    for (const it of items) {
+      const btn = document.createElement("button");
+      btn.className = it.danger ? "dokki-ctx-item dokki-ctx-danger" : "dokki-ctx-item";
+      btn.textContent = it.label;
+      btn.addEventListener("click", () => {
+        menu.remove();
+        it.onClick();
+      });
+      menu.appendChild(btn);
+    }
     document.body.appendChild(menu);
-
     const close = (e: MouseEvent) => {
       if (!menu.contains(e.target as Node)) {
         menu.remove();
@@ -1305,6 +1310,26 @@ export function mountWebView({
       }
     };
     setTimeout(() => document.addEventListener("mousedown", close), 0);
+  }
+
+  function openSpineMenu(b: BookNote, x: number, y: number) {
+    // Edit/delete only for the user's own uploaded notes.
+    if (!isCloudEnabled || !getUser() || isDemoPath(b.filePath)) return;
+    openCtxMenu(x, y, [
+      { label: "태그 수정하기", onClick: () => openTagEditor(b) },
+      {
+        label: "삭제하기",
+        danger: true,
+        onClick: async () => {
+          if (!confirm(`"${b.title}" 노트를 삭제할까요? 되돌릴 수 없습니다.`)) return;
+          try {
+            await onDelete(b.filePath);
+          } catch (e) {
+            alert(`삭제 실패: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        },
+      },
+    ]);
   }
 
   // Tag editor with autocomplete over the tags already used across your notes.
@@ -1529,36 +1554,20 @@ export function mountWebView({
   function openMultiDeleteMenu(paths: string[], x: number, y: number) {
     const deletable = paths.filter((p) => !isDemoPath(p));
     if (!isCloudEnabled || !getUser() || deletable.length === 0) return;
-
-    document.querySelector(".dokki-ctx-menu")?.remove();
-    const menu = document.createElement("div");
-    menu.className = "dokki-ctx-menu";
-    menu.style.left = `${x}px`;
-    menu.style.top = `${y}px`;
-
-    const delBtn = document.createElement("button");
-    delBtn.className = "dokki-ctx-item dokki-ctx-danger";
-    delBtn.textContent = `삭제하기 (${deletable.length}개)`;
-    delBtn.addEventListener("click", async () => {
-      menu.remove();
-      if (!confirm(`선택한 ${deletable.length}개 노트를 삭제할까요? 되돌릴 수 없습니다.`)) return;
-      try {
-        await onDeleteMany(deletable);
-      } catch (e) {
-        alert(`삭제 실패: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    });
-
-    menu.append(delBtn);
-    document.body.appendChild(menu);
-
-    const close = (e: MouseEvent) => {
-      if (!menu.contains(e.target as Node)) {
-        menu.remove();
-        document.removeEventListener("mousedown", close);
-      }
-    };
-    setTimeout(() => document.addEventListener("mousedown", close), 0);
+    openCtxMenu(x, y, [
+      {
+        label: `삭제하기 (${deletable.length}개)`,
+        danger: true,
+        onClick: async () => {
+          if (!confirm(`선택한 ${deletable.length}개 노트를 삭제할까요? 되돌릴 수 없습니다.`)) return;
+          try {
+            await onDeleteMany(deletable);
+          } catch (e) {
+            alert(`삭제 실패: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        },
+      },
+    ]);
   }
 
   function renderControlsBar() {
@@ -1609,6 +1618,49 @@ export function mountWebView({
     k.textContent = "Kakao로 로그인";
     k.addEventListener("click", () => void signInWith("kakao"));
     menu.append(g, k);
+
+    // Email magic-link: type an address → receive a styled login link.
+    const divider = document.createElement("div");
+    divider.className = "dokki-auth-divider";
+    divider.textContent = "또는 이메일로";
+    const emailForm = document.createElement("form");
+    emailForm.className = "dokki-auth-email";
+    const emailInput = document.createElement("input");
+    emailInput.type = "email";
+    emailInput.required = true;
+    emailInput.placeholder = "you@example.com";
+    emailInput.autocomplete = "email";
+    emailInput.className = "dokki-auth-email-input";
+    // The menu closes on outside *click*; typing shouldn't close it.
+    emailInput.addEventListener("click", (e) => e.stopPropagation());
+    const emailSend = document.createElement("button");
+    emailSend.type = "submit";
+    emailSend.className = "dokki-auth-email-send";
+    emailSend.textContent = "로그인 링크 보내기";
+    const emailMsg = document.createElement("div");
+    emailMsg.className = "dokki-auth-email-msg";
+    emailForm.append(emailInput, emailSend);
+    emailForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const email = emailInput.value.trim();
+      if (!email) return;
+      emailSend.disabled = true;
+      emailMsg.classList.remove("is-error");
+      emailMsg.textContent = "전송 중…";
+      try {
+        await signInWithEmail(email);
+        emailMsg.textContent = "메일함을 확인하세요 — 로그인 링크를 보냈습니다.";
+        emailInput.value = "";
+      } catch (err) {
+        emailMsg.classList.add("is-error");
+        emailMsg.textContent = `전송 실패: ${err instanceof Error ? err.message : String(err)}`;
+      } finally {
+        emailSend.disabled = false;
+      }
+    });
+    menu.append(divider, emailForm, emailMsg);
+
     trigger.addEventListener("click", (e) => {
       e.stopPropagation();
       menu.classList.toggle("is-open");
@@ -1720,28 +1772,16 @@ export function mountWebView({
         row.className = "dokki-wish-row";
         row.addEventListener("contextmenu", (e) => {
           e.preventDefault();
-          document.querySelector(".dokki-ctx-menu")?.remove();
-          const menu = document.createElement("div");
-          menu.className = "dokki-ctx-menu";
-          menu.style.left = `${e.clientX}px`;
-          menu.style.top = `${e.clientY}px`;
-          const dB = document.createElement("button");
-          dB.className = "dokki-ctx-item dokki-ctx-danger";
-          dB.textContent = "삭제하기";
-          dB.addEventListener("click", () => {
-            menu.remove();
-            removeWishlist(it.id);
-            renderWishlist();
-          });
-          menu.appendChild(dB);
-          document.body.appendChild(menu);
-          const close = (ev: MouseEvent) => {
-            if (!menu.contains(ev.target as Node)) {
-              menu.remove();
-              document.removeEventListener("mousedown", close);
-            }
-          };
-          setTimeout(() => document.addEventListener("mousedown", close), 0);
+          openCtxMenu(e.clientX, e.clientY, [
+            {
+              label: "삭제하기",
+              danger: true,
+              onClick: () => {
+                removeWishlist(it.id);
+                renderWishlist();
+              },
+            },
+          ]);
         });
         const t = document.createElement("div");
         t.className = "dokki-wish-title";
@@ -1769,102 +1809,9 @@ export function mountWebView({
   }
 
   function openWishlistSearch() {
-    const overlay = document.createElement("div");
-    overlay.className = "dokki-search-overlay";
-    const dialog = document.createElement("div");
-    dialog.className = "dokki-search-dialog";
-
-    const head = document.createElement("div");
-    head.className = "dokki-search-head";
-    const heading = document.createElement("h3");
-    heading.textContent = "읽고 싶은 도서 검색";
-    head.appendChild(heading);
-    const closeBtn = document.createElement("button");
-    closeBtn.className = "dokki-panel-close";
-    closeBtn.textContent = "×";
-    closeBtn.addEventListener("click", () => overlay.remove());
-    head.appendChild(closeBtn);
-    dialog.appendChild(head);
-
-    const form = document.createElement("form");
-    form.className = "dokki-search-form";
-    const input = document.createElement("input");
-    input.type = "search";
-    input.className = "dokki-search-input";
-    input.placeholder = "제목·저자·키워드";
-    form.appendChild(input);
-    const submit = document.createElement("button");
-    submit.type = "submit";
-    submit.className = "dokki-search-submit";
-    submit.textContent = "검색";
-    form.appendChild(submit);
-    dialog.appendChild(form);
-
-    const status = document.createElement("div");
-    status.className = "dokki-search-status";
-    dialog.appendChild(status);
-    const results = document.createElement("div");
-    results.className = "dokki-search-results";
-    dialog.appendChild(results);
-
-    overlay.appendChild(dialog);
-    overlay.addEventListener("click", (e) => {
-      if (e.target === overlay) overlay.remove();
-    });
-    document.body.appendChild(overlay);
-    setTimeout(() => input.focus(), 50);
-
-    let currentAbort: AbortController | null = null;
-    const run = async () => {
-      const q = input.value.trim();
-      if (!q) return;
-      currentAbort?.abort();
-      currentAbort = new AbortController();
-      results.innerHTML = "";
-      status.textContent = "검색 중…";
-      submit.disabled = true;
-      try {
-        const data = await searchBooks(q, currentAbort.signal);
-        submit.disabled = false;
-        if (!data.results.length) {
-          status.textContent = "검색 결과 없음.";
-          return;
-        }
-        status.textContent = `${data.total}건 중 ${data.results.length}건 표시`;
-        for (const r of data.results) results.appendChild(renderWishCard(r));
-      } catch (e) {
-        submit.disabled = false;
-        if ((e as Error).name !== "AbortError") status.textContent = "검색 실패.";
-      }
-    };
-    form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      void run();
-    });
-
-    function renderWishCard(r: NlBookResult): HTMLElement {
-      const card = document.createElement("button");
-      card.type = "button";
-      card.className = "dokki-search-card";
-      if (r.coverUrl) {
-        const img = document.createElement("img");
-        img.className = "dokki-search-card-cover";
-        img.src = r.coverUrl;
-        img.alt = "";
-        card.appendChild(img);
-      }
-      const text = document.createElement("div");
-      text.className = "dokki-search-card-text";
-      const t = document.createElement("div");
-      t.className = "dokki-search-card-title";
-      t.textContent = r.title;
-      text.appendChild(t);
-      const sub = document.createElement("div");
-      sub.className = "dokki-search-card-sub";
-      sub.textContent = [r.author, r.publisher, r.pubYear].filter(Boolean).join(" · ");
-      text.appendChild(sub);
-      card.appendChild(text);
-      card.addEventListener("click", () => {
+    openBookSearchDialog({
+      title: "읽고 싶은 도서 검색",
+      onPick: (r, card) => {
         addWishlist({
           id: r.isbn || r.controlNo || `${r.title}|${r.author ?? ""}`,
           title: r.title,
@@ -1873,9 +1820,8 @@ export function mountWebView({
         renderWishlist();
         card.classList.add("is-added");
         card.disabled = true;
-      });
-      return card;
-    }
+      },
+    });
   }
 
   function renderAll() {

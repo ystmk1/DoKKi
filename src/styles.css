@@ -15,6 +15,19 @@
   --font-display: "Pretendard Variable", "Pretendard", -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
   --font-text: "Pretendard Variable", "Pretendard", -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
   --font-ui: "Pretendard Variable", "Pretendard", ui-sans-serif, system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif;
+
+  /* 버튼·컨트롤 위계 — 3단계 스케일. 모든 버튼은 이 토큰만 쓴다.
+     sm: 조용한 pill(로그인·볼드만·태그칩·액션) / md: 바 컨트롤(필터·업로드)
+     lg: 주요 액션(검색·저장) */
+  --btn-pad-sm: 4px 12px;
+  --btn-fs-sm: 0.76rem;
+  --btn-pad-md: 7px 14px;
+  --btn-fs-md: 0.82rem;
+  --btn-pad-lg: 8px 16px;
+  --btn-fs-lg: 0.85rem;
+  --radius-pill: 99px;
+  --radius-menu: 8px;  /* 드롭다운·컨텍스트 메뉴 */
+  --radius-pop: 10px;  /* 팝오버·다이얼로그 */
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -55,28 +68,13 @@ html, body {
   padding: 32px;
   transition: opacity 0.7s ease;
 }
-.dokki-splash-text {
-  font-family: var(--font-display);
-  font-weight: 500;
-  font-size: clamp(1.4rem, 4.4vw, 2.6rem);
-  line-height: 1.35;
-  letter-spacing: -0.025em;
-  max-width: 760px;
-  text-align: center;
+.dokki-splash-logo {
+  width: clamp(72px, 12vw, 128px);
+  height: auto;
   color: var(--text-normal);
-  margin: 0;
   opacity: 0;
   transform: translateY(8px);
   animation: dokki-splash-rise 1.1s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
-}
-.dokki-splash-attr {
-  font-family: var(--font-ui);
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  letter-spacing: 0.04em;
-  margin: 0;
-  opacity: 0;
-  animation: dokki-splash-rise 1.1s 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
 }
 @keyframes dokki-splash-rise {
   to {
@@ -148,7 +146,7 @@ html.dokki-no-splash #dokki-splash { display: none; }
   min-width: 140px;
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
+  border-radius: var(--radius-menu);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
   padding: 5px;
   display: flex;
@@ -198,9 +196,9 @@ html.dokki-no-splash #dokki-splash { display: none; }
   border: 1px solid var(--background-modifier-border);
   color: var(--text-muted);
   font-family: var(--font-ui);
-  font-size: 0.78rem;
-  padding: 4px 12px;
-  border-radius: 99px;
+  font-size: var(--btn-fs-sm);
+  padding: var(--btn-pad-sm);
+  border-radius: var(--radius-pill);
   cursor: pointer;
   transition: all 0.15s;
   letter-spacing: -0.01em;
@@ -219,11 +217,11 @@ html.dokki-no-splash #dokki-splash { display: none; }
   gap: 2px;
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
+  border-radius: var(--radius-menu);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
   padding: 6px;
   z-index: 30;
-  min-width: 160px;
+  min-width: 220px;
 }
 .dokki-auth-menu.is-open { display: flex; animation: dokki-popover-in 0.14s ease-out; }
 .dokki-auth-provider {
@@ -239,6 +237,66 @@ html.dokki-no-splash #dokki-splash { display: none; }
   white-space: nowrap;
 }
 .dokki-auth-provider:hover { background: var(--background-secondary); }
+
+/* 이메일 매직링크 로그인 — 소셜 버튼 아래 구분선 + 인라인 폼 */
+.dokki-auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 4px 6px;
+  font-size: 0.68rem;
+  color: var(--text-faint);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.dokki-auth-divider::before,
+.dokki-auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--background-modifier-border);
+}
+.dokki-auth-email {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 4px 4px;
+}
+.dokki-auth-email-input {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  color: var(--text-normal);
+  outline: none;
+  letter-spacing: -0.01em;
+}
+.dokki-auth-email-input:focus { border-color: var(--text-normal); }
+.dokki-auth-email-input::placeholder { color: var(--text-faint); }
+.dokki-auth-email-send {
+  background: var(--text-normal);
+  color: var(--background-primary);
+  border: none;
+  border-radius: 6px;
+  padding: var(--btn-pad-sm);
+  font-family: var(--font-ui);
+  font-size: var(--btn-fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+  letter-spacing: -0.01em;
+}
+.dokki-auth-email-send:disabled { opacity: 0.5; cursor: wait; }
+.dokki-auth-email-msg {
+  padding: 0 4px 4px;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  white-space: normal;
+}
+.dokki-auth-email-msg.is-error { color: hsl(0, 65%, 55%); }
+.dokki-auth-email-msg:empty { display: none; }
 
 /* Drag & drop overlay for uploading .md notes */
 .dokki-drop-overlay {
@@ -359,10 +417,10 @@ html.dokki-no-splash #dokki-splash { display: none; }
   gap: 6px;
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
-  padding: 7px 12px;
+  border-radius: var(--radius-menu);
+  padding: var(--btn-pad-md);
   font-family: var(--font-ui);
-  font-size: 0.82rem;
+  font-size: var(--btn-fs-md);
   font-weight: 500;
   color: var(--text-muted);
   cursor: pointer;
@@ -408,7 +466,7 @@ html.dokki-no-splash #dokki-splash { display: none; }
   overflow-y: auto;
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
-  border-radius: 10px;
+  border-radius: var(--radius-pop);
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.14);
   padding: 14px;
   z-index: 30;
@@ -472,10 +530,10 @@ html.dokki-no-splash #dokki-splash { display: none; }
 .dokki-filter-chip {
   background: transparent;
   border: 1px solid var(--background-modifier-border);
-  border-radius: 99px;
-  padding: 4px 11px;
+  border-radius: var(--radius-pill);
+  padding: var(--btn-pad-sm);
   font-family: var(--font-ui);
-  font-size: 0.74rem;
+  font-size: var(--btn-fs-sm);
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.12s;
@@ -510,6 +568,50 @@ html.dokki-no-splash #dokki-splash { display: none; }
     radial-gradient(120% 90% at 30% 20%, #11183a 0%, #0a0e22 45%, #05060f 100%);
   overflow: hidden;
   position: relative;
+}
+/* 큐브 뷰 — 우주가 아니라 종이 위의 도면. 사이트 배경 그대로. */
+.dokki-graph-wrap.is-cube {
+  background: var(--background-primary);
+}
+
+/* 큐브 ↔ 은하 전환 토글 (그래프 우상단 오버레이) */
+.dokki-graph-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 6;
+  display: inline-flex;
+  gap: 4px;
+}
+.dokki-graph-toggle-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  padding: 3px 10px;
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: all 0.12s;
+  /* 은하(다크) 배경 기본값 — 흐린 흰 글자 */
+  color: rgba(243, 246, 255, 0.55);
+}
+.dokki-graph-toggle-btn:hover { color: rgba(243, 246, 255, 0.9); }
+.dokki-graph-toggle-btn.is-active {
+  color: #f3f6ff;
+  border-color: rgba(243, 246, 255, 0.35);
+}
+/* 큐브(종이) 배경 위에서는 잉크 톤으로 반전 */
+.dokki-graph-wrap.is-cube + .dokki-graph-toggle .dokki-graph-toggle-btn {
+  color: var(--text-faint);
+}
+.dokki-graph-wrap.is-cube + .dokki-graph-toggle .dokki-graph-toggle-btn:hover {
+  color: var(--text-normal);
+}
+.dokki-graph-wrap.is-cube + .dokki-graph-toggle .dokki-graph-toggle-btn.is-active {
+  color: var(--text-normal);
+  border-color: var(--background-modifier-border);
+  background: var(--background-secondary);
 }
 .dokki-graph-canvas {
   display: block;
@@ -704,24 +806,6 @@ html.dokki-no-splash #dokki-splash { display: none; }
   padding: 56px 32px 64px;
   position: relative;
 }
-.dokki-panel-delete {
-  position: absolute;
-  top: 20px; left: 32px;
-  background: transparent;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 99px;
-  font-family: var(--font-ui);
-  font-size: 0.72rem;
-  color: var(--text-faint);
-  padding: 3px 10px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.dokki-panel-delete:hover {
-  color: hsl(0, 65%, 55%);
-  border-color: hsl(0, 65%, 55%);
-}
-.dokki-panel-delete:disabled { opacity: 0.5; cursor: wait; }
 .dokki-panel-close {
   position: absolute;
   top: 14px; right: 14px;
@@ -744,10 +828,10 @@ html.dokki-no-splash #dokki-splash { display: none; }
   right: 56px;
   background: transparent;
   border: 1px solid var(--background-modifier-border);
-  border-radius: 99px;
-  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  padding: var(--btn-pad-sm);
   font-family: var(--font-ui);
-  font-size: 0.74rem;
+  font-size: var(--btn-fs-sm);
   color: var(--text-muted);
   cursor: pointer;
   letter-spacing: -0.01em;
@@ -958,9 +1042,9 @@ html.dokki-no-splash #dokki-splash { display: none; }
   border: 1px solid var(--background-modifier-border);
   color: var(--text-muted);
   font-family: var(--font-ui);
-  font-size: 0.72rem;
-  padding: 4px 10px;
-  border-radius: 99px;
+  font-size: var(--btn-fs-sm);
+  padding: var(--btn-pad-sm);
+  border-radius: var(--radius-pill);
   cursor: pointer;
   transition: all 0.15s;
   letter-spacing: -0.01em;
@@ -1419,7 +1503,7 @@ html.dokki-no-splash #dokki-splash { display: none; }
 .dokki-search-dialog {
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
-  border-radius: 10px;
+  border-radius: var(--radius-pop);
   width: 100%;
   max-width: 640px;
   max-height: min(80vh, 720px);
@@ -1435,7 +1519,7 @@ html.dokki-no-splash #dokki-splash { display: none; }
   position: relative;
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
-  border-radius: 12px;
+  border-radius: var(--radius-pop);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.28);
   padding: 28px 28px 22px;
   width: 100%;
@@ -1509,9 +1593,9 @@ html.dokki-no-splash #dokki-splash { display: none; }
   color: var(--background-primary);
   border: none;
   border-radius: 6px;
-  padding: 8px 16px;
+  padding: var(--btn-pad-lg);
   font-family: var(--font-ui);
-  font-size: 0.85rem;
+  font-size: var(--btn-fs-lg);
   font-weight: 500;
   cursor: pointer;
   letter-spacing: -0.01em;
@@ -1612,9 +1696,9 @@ html.dokki-no-splash #dokki-splash { display: none; }
   border: 1px solid var(--background-modifier-border);
   background: transparent;
   color: var(--text-muted);
-  border-radius: 99px;
-  padding: 4px 10px;
-  font-size: 0.78rem;
+  border-radius: var(--radius-pill);
+  padding: var(--btn-pad-sm);
+  font-size: var(--btn-fs-sm);
   cursor: pointer;
 }
 .dokki-tagedit-sugg-item:hover {

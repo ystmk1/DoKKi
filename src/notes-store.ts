@@ -65,13 +65,19 @@ export async function uploadNotes(files: File[]): Promise<{ saved: number; skipp
 
 /** Delete one uploaded note (by its filename) from the signed-in account. */
 export async function deleteNote(filename: string): Promise<void> {
+  return deleteNotes([filename]);
+}
+
+/** Delete several uploaded notes in one round trip. */
+export async function deleteNotes(filenames: string[]): Promise<void> {
+  if (filenames.length === 0) return;
   const user = getUser();
   if (!supabase || !user) throw new Error("로그인이 필요합니다.");
   const { error } = await supabase
     .from("notes")
     .delete()
     .eq("user_id", user.id)
-    .eq("filename", filename);
+    .in("filename", filenames);
   if (error) throw new Error(error.message);
 }
 
