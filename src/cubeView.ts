@@ -122,8 +122,9 @@ export function renderCube(
   const pal = palette();
   const { links: rawLinks } = buildGraph(books, basis);
 
+  // 크기는 컨테이너(CSS)가 결정한다 — 와이드 2열 레이아웃에선 화면을 채운다.
   let width = container.clientWidth || 800;
-  container.style.height = `${HEIGHT}px`;
+  let height = container.clientHeight || HEIGHT;
   container.style.position = "relative";
 
   // --- 노드: 축 점수 → 큐브 좌표 -----------------------------------------
@@ -149,18 +150,18 @@ export function renderCube(
 
   // --- three.js 장면 ------------------------------------------------------
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(45, width / HEIGHT, 0.1, 4000);
+  const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 4000);
   camera.rotation.order = "YXZ";
   // 레퍼런스처럼 위에서 비스듬히 내려다보는 아이소메트릭 느낌의 초기 각.
   let yaw = 0.62;
   let pitch = -0.46;
   const DIST_MAX = HALF * 8;
-  let dist = HALF * 3.4;
+  let dist = HALF * 2.9; // 라벨 여백을 남기면서 큐브가 화면을 주도하는 거리
   const forward = new THREE.Vector3();
 
   const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setSize(width, HEIGHT);
+  renderer.setSize(width, height);
   renderer.domElement.className = "dokki-graph-canvas";
   container.appendChild(renderer.domElement);
 
@@ -406,9 +407,10 @@ export function renderCube(
 
   const ro = new ResizeObserver(() => {
     width = container.clientWidth || width;
-    camera.aspect = width / HEIGHT;
+    height = container.clientHeight || height;
+    camera.aspect = width / height;
     camera.updateProjectionMatrix();
-    renderer.setSize(width, HEIGHT);
+    renderer.setSize(width, height);
   });
   ro.observe(container);
 

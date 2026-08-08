@@ -101,6 +101,34 @@ html.dokki-no-splash #dokki-splash { display: none; }
   margin: 0 auto;
 }
 
+/* === 와이드 2열 레이아웃 — 큐브가 메인, 목록은 오른쪽 좁은 열 === */
+@media (min-width: 1440px) {
+  .dokki-root {
+    max-width: 1720px;
+    padding: 28px 48px 80px;
+  }
+  .dokki-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(400px, 500px);
+    /* 마지막 1fr 필러 행 덕에 그래프가 오른쪽 열보다 길어도 자리를 갖는다 */
+    grid-template-rows: auto auto auto auto 1fr;
+    column-gap: 64px;
+    align-items: start;
+  }
+  .dokki-controls-holder { grid-column: 2; grid-row: 1; }
+  .dokki-stack-wrap      { grid-column: 2; grid-row: 2; }
+  .dokki-nonfiction      { grid-column: 2; grid-row: 3; }
+  .dokki-wishlist        { grid-column: 2; grid-row: 4; }
+  .dokki-graph-section {
+    grid-column: 1;
+    grid-row: 1 / -1;
+    position: sticky; /* 오른쪽 목록을 스크롤해도 큐브는 화면에 남는다 */
+    top: 24px;
+    margin-bottom: 0;
+  }
+  .dokki-graph-wrap { height: calc(100vh - 128px); }
+}
+
 /* === PAGE HEADER === */
 .dokki-page-header {
   display: flex;
@@ -561,6 +589,7 @@ html.dokki-no-splash #dokki-splash { display: none; }
 }
 .dokki-graph-wrap {
   width: 100%;
+  height: 320px; /* JS는 이 높이를 읽어 캔버스를 맞춘다 (와이드에선 화면 채움) */
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--dokki-radius);
   /* Deep-space gradient sits behind the transparent WebGL canvas. */
@@ -569,9 +598,11 @@ html.dokki-no-splash #dokki-splash { display: none; }
   overflow: hidden;
   position: relative;
 }
-/* 큐브 뷰 — 우주가 아니라 종이 위의 도면. 사이트 배경 그대로. */
+/* 큐브 뷰 — 우주가 아니라 종이 위의 도면. 박스·스트로크 없이 페이지에 그대로. */
 .dokki-graph-wrap.is-cube {
-  background: var(--background-primary);
+  background: transparent;
+  border: none;
+  border-radius: 0;
 }
 
 /* 큐브 ↔ 은하 전환 토글 (그래프 우상단 오버레이) */
@@ -1204,13 +1235,30 @@ html.dokki-no-splash #dokki-splash { display: none; }
 .dokki-panel-external em { font-style: italic; }
 .dokki-panel-external strong { font-weight: 600; }
 
-/* === 비문학 발췌 — between the book stack and the wishlist. Hierarchy: less
-   prominent than the book spines (no covers, compact rows), more prominent
-   than the wishlist (preview text, larger titles, clickable cards). === */
+/* === 목록 공통 — 작성한 노트(책 스택)를 기준으로 한 변주.
+   세 목록(스택·짧은 발췌·위시리스트)은 같은 행 골격을 공유한다:
+   높이 36px · 좌측 3px 밴드 자리 · 같은 폰트 스케일(제목 0.95 / 메타 0.82).
+   변주는 색·배경으로만 준다 — 스택은 종이결+상태 밴드, 발췌는 민무늬,
+   위시리스트는 잉크만 한 단계 낮춘 민무늬. === */
+.dokki-list-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-ui);
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  padding-bottom: 8px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.dokki-list-head > span { margin-right: auto; }
+
+/* === 짧은 발췌(비문학 조각) — 스택과 같은 골격, 종이결·밴드 없이 === */
 .dokki-nonfiction {
-  /* Matches the graph-section → book-stack gap (28px) — separate 단 but not
-     overweighted. No header, no divider. */
-  margin: 28px 0 0;
+  margin: 40px 0 0;
   font-family: var(--font-ui);
 }
 .dokki-nonfiction-list {
@@ -1218,33 +1266,41 @@ html.dokki-no-splash #dokki-splash { display: none; }
   flex-direction: column;
 }
 .dokki-nf-row {
-  padding: 12px 4px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 2.5fr);
+  align-items: baseline;
+  gap: 16px;
+  height: 36px;
+  align-content: center;
+  padding: 0 14px 0 11px;
+  border-left: 3px solid transparent; /* 스택의 상태 밴드 자리 — 텍스트 정렬 유지 */
   cursor: pointer;
-  border-radius: 4px;
   transition: background 0.12s;
 }
-.dokki-nf-row + .dokki-nf-row { border-top: 1px dashed var(--background-modifier-border); }
+.dokki-nf-row + .dokki-nf-row { border-top: 1px solid var(--background-modifier-border); }
 .dokki-nf-row:hover { background: var(--background-secondary); }
 .dokki-nf-row.is-selected {
   background: rgba(91, 124, 255, 0.14);
   box-shadow: inset 0 0 0 1px rgba(91, 124, 255, 0.5);
 }
 .dokki-nf-title {
-  font-size: 0.92rem;
+  font-family: var(--font-display);
   font-weight: 500;
+  font-size: 0.95rem;
   color: var(--text-normal);
-  letter-spacing: -0.01em;
-  line-height: 1.4;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .dokki-nf-preview {
-  margin-top: 4px;
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   color: var(--text-muted);
-  line-height: 1.55;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 /* Backlinks at the bottom of an open note panel. */
@@ -1264,26 +1320,11 @@ html.dokki-no-splash #dokki-splash { display: none; }
 .dokki-backlinks ul { list-style: none; margin: 0; padding: 0; }
 .dokki-backlinks li { padding: 4px 0; font-size: 0.86rem; }
 
-/* === 읽고 싶은 도서 — list below the book stack, above the footer === */
+/* === 읽고 싶은 도서 — 같은 골격에서 잉크만 한 단계 낮춘 변주 === */
 .dokki-wishlist {
-  margin: 44px 0 0;
+  margin: 40px 0 0;
   font-family: var(--font-ui);
 }
-/* Lower in the visual hierarchy than the main book stack: smaller, fainter. */
-.dokki-wishlist-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.66rem;
-  letter-spacing: 0.08em;
-  font-weight: 600;
-  color: var(--text-faint);
-  text-transform: uppercase;
-  padding-bottom: 8px;
-  margin-bottom: 8px;
-  border-bottom: 1px solid var(--background-modifier-border);
-}
-.dokki-wishlist-head > span { margin-right: auto; }
 .dokki-wishlist-add {
   background: transparent;
   border: 1px solid var(--background-modifier-border);
@@ -1300,27 +1341,50 @@ html.dokki-no-splash #dokki-splash { display: none; }
   transition: all 0.12s;
 }
 .dokki-wishlist-add:hover { color: var(--text-normal); border-color: var(--text-normal); }
-.dokki-wishlist-empty { font-size: 0.72rem; color: var(--text-faint); padding: 4px 2px; }
+.dokki-wishlist-empty {
+  font-size: 0.82rem;
+  color: var(--text-faint);
+  padding: 8px 14px 0 14px;
+}
 .dokki-wish-row {
   position: relative;
-  padding: 6px 18px 6px 2px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 2.5fr);
+  align-items: baseline;
+  gap: 16px;
+  height: 36px;
+  align-content: center;
+  padding: 0 26px 0 11px; /* 우측은 × 버튼 자리 */
+  border-left: 3px solid transparent; /* 스택의 상태 밴드 자리 — 정렬 유지 */
+  transition: background 0.12s;
 }
-.dokki-wish-row + .dokki-wish-row { border-top: 1px dashed var(--background-modifier-border); }
+.dokki-wish-row + .dokki-wish-row { border-top: 1px solid var(--background-modifier-border); }
+.dokki-wish-row:hover { background: var(--background-secondary); }
 .dokki-wish-title {
-  font-size: 0.82rem;
-  color: var(--text-normal);
-  line-height: 1.3;
-  letter-spacing: -0.01em;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 0.95rem;
+  color: var(--text-muted); /* 아직 없는 책 — 스택 제목보다 한 톤 낮게 */
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+.dokki-wish-row:hover .dokki-wish-title { color: var(--text-normal); }
 .dokki-wish-author {
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  margin-top: 1px;
+  font-size: 0.82rem;
+  color: var(--text-faint);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 .dokki-wish-del {
   position: absolute;
-  top: 5px;
-  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  right: 8px;
   background: transparent;
   border: none;
   color: var(--text-faint);
