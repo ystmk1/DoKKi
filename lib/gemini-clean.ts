@@ -67,20 +67,42 @@ function normalizeModel(model: string): string {
   return m.startsWith("models/") ? m : `models/${m}`;
 }
 
-// Cache the auto-detected model for the life of the process/page so we only
-// hit ListModels once.
-let detectedModel: string | null = null;
+/**
+ * Rank auto-detect candidates, best first. The old "alphabetical newest" pick
+ * broke when Google added alias models (gemini-flash-latest) and new-generation
+ * models that only speak the Interactions API — alphabetically those sort above
+ * gemini-2.5-flash. Rank by parsed version instead, demoting lite/preview
+ * variants and un-versioned aliases; callGeminiClean walks this list and falls
+ * back on incompatible models, so the exact order is a preference, not a bet.
+ */
+export function rankFlashModels(names: string[]): string[] {
+  const score = (name: string): number => {
+    const v = name.match(/gemini-(\d+(?:\.\d+)?)/);
+    let s = v ? parseFloat(v[1]) * 1000 : -100000; // un-versioned alias → last
+    if (/lite|8b/.test(name)) s -= 300;
+    if (/preview|exp/.test(name)) s -= 450;
+    return s;
+  };
+  return [...names].sort((a, b) => score(b) - score(a));
+}
 
 /**
- * When the caller doesn't pin a model, ask the API which models exist and pick
- * the newest `flash` one that supports generateContent — same logic as the
- * original Text Extractor. Falls back to DEFAULT_MODEL if the listing fails.
+ * "This model only supports Interactions API" / not-found class errors — the
+ * model exists but can't serve generateContent. Retriable on the next
+ * candidate (unlike key/quota errors, which must surface to the caller).
  */
-export async function resolveFlashModel(
-  apiKey: string,
-  fetchImpl: typeof fetch = fetch,
-): Promise<string> {
-  if (detectedModel) return detectedModel;
+export function isModelIncompatibleError(message: string): boolean {
+  return /interactions api|not (?:found|supported)|unknown name|invalid model|unsupported/i.test(
+    message,
+  );
+}
+
+// Ranked candidate cache for the life of the process/page (ListModels once).
+// A successful call moves its model to the front.
+let candidatesCache: string[] | null = null;
+
+async function listFlashModels(apiKey: string, fetchImpl: typeof fetch): Promise<string[]> {
+  if (candidatesCache) return candidatesCache;
   try {
     const res = await fetchImpl(
       `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`,
@@ -93,18 +115,29 @@ export async function resolveFlashModel(
         .filter(
           (m) =>
             (m.supportedGenerationMethods || []).includes("generateContent") &&
-            m.name.includes("flash"),
+            m.name.includes("flash") &&
+            !/tts|image|audio|live|embedding/.test(m.name),
         )
-        .sort((a, b) => b.name.localeCompare(a.name))[0];
-      if (flash) {
-        detectedModel = flash.name; // e.g. "models/gemini-2.0-flash"
-        return detectedModel;
+        .map((m) => m.name);
+      const ranked = rankFlashModels(flash);
+      if (ranked.length) {
+        candidatesCache = ranked;
+        return ranked;
       }
     }
   } catch {
     /* fall through to default */
   }
-  return DEFAULT_MODEL;
+  candidatesCache = [DEFAULT_MODEL];
+  return candidatesCache;
+}
+
+/** 하위 호환: 최상위 후보 하나만 필요할 때. */
+export async function resolveFlashModel(
+  apiKey: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  return (await listFlashModels(apiKey, fetchImpl))[0];
 }
 
 export interface GeminiCleanArgs {
@@ -119,6 +152,11 @@ export interface GeminiCleanArgs {
  * Refine one chunk of OCR text. Returns the refined text, or the original
  * unchanged when the input is blank or the model goes meta. Throws on API
  * errors (including 429 — rate-limit handling/rotation is the caller's job).
+ *
+ * Auto-detect mode (no pinned model) walks the ranked flash candidates and
+ * silently falls back when a model turns out to be generateContent-incompatible
+ * (e.g. "This model only supports Interactions API"); the working model is
+ * remembered for subsequent chunks.
  */
 export async function callGeminiClean({
   apiKey,
@@ -129,10 +167,38 @@ export async function callGeminiClean({
 }: GeminiCleanArgs): Promise<string> {
   if (!text || !text.trim()) return text;
 
-  // No explicit model → auto-detect the newest available flash model.
-  const chosen = model.trim() || (await resolveFlashModel(apiKey, fetchImpl));
+  const pinned = model.trim();
+  const candidates = pinned ? [pinned] : await listFlashModels(apiKey, fetchImpl);
+
+  let lastErr: Error | null = null;
+  for (const candidate of candidates) {
+    try {
+      const out = await generateOnce(candidate, apiKey, text, customPrompt, fetchImpl);
+      // 자동 감지 모드: 성공한 모델을 캐시 맨 앞으로 — 다음 청크부터 바로 사용.
+      if (!pinned && candidatesCache && candidatesCache[0] !== candidate) {
+        candidatesCache = [candidate, ...candidatesCache.filter((c) => c !== candidate)];
+      }
+      return out;
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      // 키/한도 오류는 다른 모델을 시도해도 소용없다 — 즉시 표면화.
+      // 모델 비호환(Interactions API 전용 등)만 다음 후보로 폴백한다.
+      if (pinned || !isModelIncompatibleError(err.message)) throw err;
+      lastErr = err;
+    }
+  }
+  throw lastErr ?? new Error("Gemini API 오류: 사용 가능한 flash 모델이 없습니다.");
+}
+
+async function generateOnce(
+  model: string,
+  apiKey: string,
+  text: string,
+  customPrompt: string,
+  fetchImpl: typeof fetch,
+): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/${normalizeModel(
-    chosen,
+    model,
   )}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   const res = await fetchImpl(url, {
