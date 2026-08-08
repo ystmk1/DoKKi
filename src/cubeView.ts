@@ -155,8 +155,16 @@ export function renderCube(
   // 레퍼런스처럼 위에서 비스듬히 내려다보는 아이소메트릭 느낌의 초기 각.
   let yaw = 0.62;
   let pitch = -0.46;
-  const DIST_MAX = HALF * 8;
-  let dist = HALF * 2.9; // 라벨 여백을 남기면서 큐브가 화면을 주도하는 거리
+  // 카메라 거리는 "큐브 전체(코너·라벨 포함)가 항상 화면에 다 들어오는" 값을
+  // 캔버스 비율에서 역산한다 — 어떤 크기의 캔버스에서도 잘리지 않는다.
+  // 휠 줌은 그 기준 거리에 대한 배율로만 동작한다.
+  const FIT_R = HALF * Math.sqrt(3) * 1.16; // 코너 반경 + 라벨 여유
+  let zoom = 1;
+  const fitDist = () => {
+    const vHalf = (camera.fov * Math.PI) / 360;
+    const hHalf = Math.atan(Math.tan(vHalf) * camera.aspect);
+    return FIT_R / Math.sin(Math.min(vHalf, hHalf));
+  };
   const forward = new THREE.Vector3();
 
   const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
@@ -378,7 +386,7 @@ export function renderCube(
 
   const onWheel = (e: WheelEvent) => {
     e.preventDefault();
-    dist = Math.min(DIST_MAX, Math.max(HALF * 1.4, dist + e.deltaY * 0.6));
+    zoom = Math.min(2.6, Math.max(0.45, zoom * Math.exp(e.deltaY * 0.001)));
   };
 
   const cv = renderer.domElement;
@@ -400,7 +408,7 @@ export function renderCube(
     if (!dragging) field.rotation.y += dt * 0.05; // 손을 대면 멈추는 느린 자전
     camera.rotation.set(pitch, yaw, 0);
     forward.set(0, 0, -1).applyEuler(camera.rotation);
-    camera.position.copy(forward).multiplyScalar(-dist);
+    camera.position.copy(forward).multiplyScalar(-fitDist() * zoom);
     renderer.render(scene, camera);
   };
   tick();

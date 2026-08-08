@@ -123,10 +123,15 @@ html.dokki-no-splash #dokki-splash { display: none; }
     grid-column: 1;
     grid-row: 1 / -1;
     position: sticky; /* 오른쪽 목록을 스크롤해도 큐브는 화면에 남는다 */
-    top: 24px;
+    top: 20px;
     margin-bottom: 0;
+    /* 캔버스를 페이지 왼쪽 여백·열 사이 간격까지 블리드 — 큐브가 콘텐츠와
+       같은 평면 위에 오버레이된 큰 캔버스라는 감각 (배경이 투명해서 겹쳐도
+       선·점만 보인다). */
+    margin-left: -48px;
+    margin-right: -40px;
   }
-  .dokki-graph-wrap { height: calc(100vh - 128px); }
+  .dokki-graph-wrap { height: calc(100vh - 40px); }
 }
 
 /* === PAGE HEADER === */
@@ -598,11 +603,13 @@ html.dokki-no-splash #dokki-splash { display: none; }
   overflow: hidden;
   position: relative;
 }
-/* 큐브 뷰 — 우주가 아니라 종이 위의 도면. 박스·스트로크 없이 페이지에 그대로. */
+/* 큐브 뷰 — 박스가 아니라 페이지 위에 떠 있는 오브젝트. 스트로크·배경 없이,
+   캔버스는 여백까지 넓게 쓰고 카메라가 큐브 전체를 항상 프레임 안에 담는다. */
 .dokki-graph-wrap.is-cube {
   background: transparent;
   border: none;
   border-radius: 0;
+  height: 460px; /* 단일 열에서도 큐브가 시원하게 */
 }
 
 /* 큐브 ↔ 은하 전환 토글 (그래프 우상단 오버레이) */
