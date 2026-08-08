@@ -101,8 +101,15 @@ export function mountWebView({
   excerptWrap.className = "dokki-excerpt";
   mount.appendChild(excerptWrap);
 
+  // 컨트롤·그래프·목록들을 감싸는 래퍼 — 넓은 화면(≥1440px)에서는 큐브가
+  // 메인(왼쪽, sticky)이 되고 목록들이 오른쪽 좁은 열로 붙는 2열 그리드가 된다.
+  const mainWrap = document.createElement("div");
+  mainWrap.className = "dokki-main";
+  mount.appendChild(mainWrap);
+
   const controlsHolder = document.createElement("div");
-  mount.appendChild(controlsHolder);
+  controlsHolder.className = "dokki-controls-holder";
+  mainWrap.appendChild(controlsHolder);
 
   const graphSection = document.createElement("div");
   graphSection.className = "dokki-graph-section";
@@ -141,7 +148,7 @@ export function mountWebView({
     graphToggle.appendChild(btn);
   }
   graphSection.appendChild(graphToggle);
-  mount.appendChild(graphSection);
+  mainWrap.appendChild(graphSection);
 
   // Upload button lives in the controls bar (right of the filter); it's a
   // persistent element moved into each freshly-built bar.
@@ -150,7 +157,7 @@ export function mountWebView({
 
   const stackWrap = document.createElement("div");
   stackWrap.className = "dokki-stack-wrap";
-  mount.appendChild(stackWrap);
+  mainWrap.appendChild(stackWrap);
 
   // 비문학(non-fiction) excerpts — a collection of short prose pieces, between
   // the book stack and the wishlist. Lower hierarchy than the stack (compact
@@ -250,8 +257,8 @@ export function mountWebView({
   repoLink.rel = "noopener";
   repoLink.textContent = "GitHub →";
   footer.appendChild(repoLink);
-  mount.appendChild(nonfictionWrap); // 비문학 발췌, between the stack and the wishlist
-  mount.appendChild(wishWrap); // want-to-read list, just above the footer
+  mainWrap.appendChild(nonfictionWrap); // 비문학 발췌, between the stack and the wishlist
+  mainWrap.appendChild(wishWrap); // want-to-read list, just above the footer
   mount.appendChild(footer);
 
   const panel = document.createElement("aside");
@@ -1230,6 +1237,14 @@ export function mountWebView({
     const pool = filtered(state, books).filter(isNonfiction);
     if (!pool.length) return;
 
+    // 위시리스트와 같은 급의 섹션 헤더 — 세 목록의 위계를 같은 문법으로.
+    const head = document.createElement("div");
+    head.className = "dokki-list-head";
+    const title = document.createElement("span");
+    title.textContent = "짧은 발췌";
+    head.appendChild(title);
+    nonfictionWrap.appendChild(head);
+
     const list = document.createElement("div");
     list.className = "dokki-nonfiction-list";
     for (const b of pool) {
@@ -1739,7 +1754,7 @@ export function mountWebView({
   function renderWishlist() {
     wishWrap.innerHTML = "";
     const head = document.createElement("div");
-    head.className = "dokki-wishlist-head";
+    head.className = "dokki-list-head dokki-wishlist-head";
     const title = document.createElement("span");
     title.textContent = "읽고 싶은 도서";
     const add = document.createElement("button");

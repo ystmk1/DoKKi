@@ -105,8 +105,9 @@ export function renderGraph(
   const { nodes: rawNodes, links: rawLinks } = buildGraph(books, basis);
   const galaxy = basis !== "off";
 
+  // 크기는 컨테이너(CSS)가 결정한다 — 와이드 2열 레이아웃에선 화면을 채운다.
   let width = container.clientWidth || 800;
-  container.style.height = `${HEIGHT}px`;
+  let height = container.clientHeight || HEIGHT;
   container.style.position = "relative";
 
   const ratingOf = new Map(books.map((b) => [b.filePath, b.frontmatter.rating ?? 0]));
@@ -207,7 +208,7 @@ export function renderGraph(
 
   // --- three.js scene -----------------------------------------------------
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(58, width / HEIGHT, 0.1, 4000);
+  const camera = new THREE.PerspectiveCamera(58, width / height, 0.1, 4000);
   camera.rotation.order = "YXZ";
   let yaw = 0;
   let pitch = 0;
@@ -222,7 +223,7 @@ export function renderGraph(
 
   const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setSize(width, HEIGHT);
+  renderer.setSize(width, height);
   renderer.domElement.className = "dokki-graph-canvas";
   container.appendChild(renderer.domElement);
 
@@ -349,7 +350,7 @@ export function renderGraph(
 
     if (panningView) {
       // Slide the centre point along the camera's right/up axes.
-      const k = (2 * dist * Math.tan((camera.fov * Math.PI) / 360)) / HEIGHT;
+      const k = (2 * dist * Math.tan((camera.fov * Math.PI) / 360)) / height;
       camRight.set(1, 0, 0).applyEuler(camera.rotation);
       camUp.set(0, 1, 0).applyEuler(camera.rotation);
       pan.addScaledVector(camRight, -(e.clientX - lastX) * k);
@@ -477,9 +478,10 @@ export function renderGraph(
 
   const ro = new ResizeObserver(() => {
     width = container.clientWidth || width;
-    camera.aspect = width / HEIGHT;
+    height = container.clientHeight || height;
+    camera.aspect = width / height;
     camera.updateProjectionMatrix();
-    renderer.setSize(width, HEIGHT);
+    renderer.setSize(width, height);
   });
   ro.observe(container);
 

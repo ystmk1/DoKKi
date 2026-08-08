@@ -122,8 +122,9 @@ export function renderCube(
   const pal = palette();
   const { links: rawLinks } = buildGraph(books, basis);
 
+  // 크기는 컨테이너(CSS)가 결정한다 — 와이드 2열 레이아웃에선 화면을 채운다.
   let width = container.clientWidth || 800;
-  container.style.height = `${HEIGHT}px`;
+  let height = container.clientHeight || HEIGHT;
   container.style.position = "relative";
 
   // --- 노드: 축 점수 → 큐브 좌표 -----------------------------------------
@@ -149,18 +150,26 @@ export function renderCube(
 
   // --- three.js 장면 ------------------------------------------------------
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(45, width / HEIGHT, 0.1, 4000);
+  const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 4000);
   camera.rotation.order = "YXZ";
   // 레퍼런스처럼 위에서 비스듬히 내려다보는 아이소메트릭 느낌의 초기 각.
   let yaw = 0.62;
   let pitch = -0.46;
-  const DIST_MAX = HALF * 8;
-  let dist = HALF * 3.4;
+  // 카메라 거리는 "큐브 전체(코너·라벨 포함)가 항상 화면에 다 들어오는" 값을
+  // 캔버스 비율에서 역산한다 — 어떤 크기의 캔버스에서도 잘리지 않는다.
+  // 휠 줌은 그 기준 거리에 대한 배율로만 동작한다.
+  const FIT_R = HALF * Math.sqrt(3) * 1.16; // 코너 반경 + 라벨 여유
+  let zoom = 1;
+  const fitDist = () => {
+    const vHalf = (camera.fov * Math.PI) / 360;
+    const hHalf = Math.atan(Math.tan(vHalf) * camera.aspect);
+    return FIT_R / Math.sin(Math.min(vHalf, hHalf));
+  };
   const forward = new THREE.Vector3();
 
   const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setSize(width, HEIGHT);
+  renderer.setSize(width, height);
   renderer.domElement.className = "dokki-graph-canvas";
   container.appendChild(renderer.domElement);
 
@@ -377,7 +386,7 @@ export function renderCube(
 
   const onWheel = (e: WheelEvent) => {
     e.preventDefault();
-    dist = Math.min(DIST_MAX, Math.max(HALF * 1.4, dist + e.deltaY * 0.6));
+    zoom = Math.min(2.6, Math.max(0.45, zoom * Math.exp(e.deltaY * 0.001)));
   };
 
   const cv = renderer.domElement;
@@ -399,16 +408,17 @@ export function renderCube(
     if (!dragging) field.rotation.y += dt * 0.05; // 손을 대면 멈추는 느린 자전
     camera.rotation.set(pitch, yaw, 0);
     forward.set(0, 0, -1).applyEuler(camera.rotation);
-    camera.position.copy(forward).multiplyScalar(-dist);
+    camera.position.copy(forward).multiplyScalar(-fitDist() * zoom);
     renderer.render(scene, camera);
   };
   tick();
 
   const ro = new ResizeObserver(() => {
     width = container.clientWidth || width;
-    camera.aspect = width / HEIGHT;
+    height = container.clientHeight || height;
+    camera.aspect = width / height;
     camera.updateProjectionMatrix();
-    renderer.setSize(width, HEIGHT);
+    renderer.setSize(width, height);
   });
   ro.observe(container);
 
