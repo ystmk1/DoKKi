@@ -1,0 +1,65 @@
+<!-- tin — Magic Link 로그인 메일 템플릿.
+     Supabase Dashboard → Authentication → Email Templates → "Magic Link" 본문에
+     이 파일 내용을 통째로 붙여넣으세요. ({{ .ConfirmationURL }} 은 Supabase가 치환)
+     이메일 클라이언트 호환을 위해 table 레이아웃 + 인라인 스타일만 사용. -->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#fafaf7;padding:40px 16px;">
+  <tr>
+    <td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;background-color:#ffffff;border:1px solid #d8d6cf;border-radius:12px;">
+        <tr>
+          <td style="padding:36px 40px 0;">
+            <!-- brand mark: matches the site's black pill "tin" -->
+            <span style="display:inline-block;background-color:#1a1a1a;color:#fafaf7;font-family:Helvetica,'Helvetica Neue',Arial,sans-serif;font-weight:700;font-size:14px;letter-spacing:-0.5px;padding:4px 12px;border-radius:5px;">tin</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 40px 0;font-family:-apple-system,'Apple SD Gothic Neo','Noto Sans KR',Helvetica,Arial,sans-serif;">
+            <h1 style="margin:0;font-size:20px;line-height:1.4;font-weight:600;color:#1a1a1a;letter-spacing:-0.3px;">
+              tin에 로그인하세요
+            </h1>
+            <p style="margin:14px 0 0;font-size:14px;line-height:1.7;color:#6b6b66;">
+              아래 버튼을 누르면 바로 로그인됩니다.<br />
+              이 링크는 <strong style="color:#1a1a1a;font-weight:600;">1시간 동안</strong> 유효하며, 한 번만 사용할 수 있습니다.
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 40px 8px;">
+            <a href="{{ .ConfirmationURL }}"
+               style="display:block;text-align:center;background-color:#1a1a1a;color:#fafaf7;font-family:-apple-system,'Apple SD Gothic Neo','Noto Sans KR',Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;letter-spacing:-0.2px;text-decoration:none;padding:13px 20px;border-radius:8px;">
+              로그인하기
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 40px 0;font-family:-apple-system,'Apple SD Gothic Neo','Noto Sans KR',Helvetica,Arial,sans-serif;">
+            <p style="margin:0;font-size:12px;line-height:1.7;color:#999692;">
+              버튼이 눌리지 않으면 아래 주소를 복사해 브라우저에 붙여넣으세요.
+            </p>
+            <p style="margin:6px 0 0;font-size:12px;line-height:1.6;word-break:break-all;">
+              <a href="{{ .ConfirmationURL }}" style="color:#4a6fa5;text-decoration:underline;">{{ .ConfirmationURL }}</a>
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 40px 32px;font-family:-apple-system,'Apple SD Gothic Neo','Noto Sans KR',Helvetica,Arial,sans-serif;">
+            <hr style="border:none;border-top:1px solid #f1f0eb;margin:0 0 16px;" />
+            <p style="margin:0;font-size:12px;line-height:1.7;color:#999692;">
+              본인이 요청하지 않았다면 이 메일은 무시해도 됩니다.<br />
+              누군가 실수로 주소를 잘못 입력했을 수 있으며, 계정은 안전합니다.
+            </p>
+          </td>
+        </tr>
+      </table>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;">
+        <tr>
+          <td style="padding:20px 8px 0;font-family:-apple-system,'Apple SD Gothic Neo','Noto Sans KR',Helvetica,Arial,sans-serif;text-align:center;">
+            <p style="margin:0;font-size:12px;color:#999692;letter-spacing:-0.1px;">
+              A book must be the axe for the frozen sea within us. — Kafka
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
