@@ -31,6 +31,12 @@ DO (only OCR-level repairs):
 5. Keep page markers EXACTLY as-is, including the "##### " prefix (e.g., "##### 256p."), as clear headers at the top of their respective sections. Never remove or alter the "#####" prefix.
 6. Output ONLY the resulting Korean text without any explanation.
 7. NEVER ask for the text or respond conversationally. The text is already provided below. If the input is empty, output nothing.
+
+OUTPUT LAYOUT (tin note format — apply to the layout only, never to the wording):
+- Paragraphs are separated by exactly ONE blank line.
+- A line of dialogue that stands alone (starts with an opening quote and ends with a closing quote, e.g. “…….”) must be its OWN paragraph — blank line before and after. Quotes embedded inside a narration sentence stay inline; never split those.
+- Never merge a standalone dialogue line into a narration paragraph.
+- Do not add or remove blank lines around "##### Np." page markers beyond the one-blank-line rule.
 ${extra}
 Text to refine:
 ${text}`;
