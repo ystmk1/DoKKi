@@ -8,7 +8,12 @@ import { probeConfig, type ServerConfig } from "./api";
 import { runExtract } from "./ocr";
 import { processBookText, type ReflowMode } from "./reflow";
 import { cleanText } from "./clean";
+import { normalizeNoteFormat } from "../../lib/note-format";
 import type { VisionMode } from "../../lib/vision-ocr";
+
+// 스캔 출력의 마지막 층 — AI/규칙이 뭘 내놓든 docs/FORMAT.md 양식을 강제한다.
+// (스캔 텍스트에 의도적 스킵은 없으므로 빈 줄은 1개로 축약)
+const enforceFormat = (t: string) => normalizeNoteFormat(t, { preserveSkips: false });
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -151,7 +156,7 @@ async function extract() {
       userKey: els.visionKey.value.trim(),
       onProgress: setProg,
     });
-    els.result.value = text;
+    els.result.value = enforceFormat(text);
     els.badge.textContent = badge;
     beforeClean = null;
     els.revertBtn.hidden = true;
@@ -187,7 +192,7 @@ async function aiClean() {
         els.aiBtn.textContent = total > 1 ? `AI 정리 중… (${done}/${total})` : "AI 정리 중…";
       },
     });
-    els.result.value = refined;
+    els.result.value = enforceFormat(refined);
     els.aiBtn.textContent = "AI 정리 완료 ✓";
     els.revertBtn.hidden = false;
     setTimeout(() => { els.aiBtn.textContent = "AI 재정리"; }, 2000);
@@ -233,7 +238,7 @@ els.resetBtn.addEventListener("click", () => {
 els.fixBtn.addEventListener("click", () => {
   const t = els.result.value;
   if (!t) return;
-  els.result.value = processBookText(t, els.reflow.value as ReflowMode);
+  els.result.value = enforceFormat(processBookText(t, els.reflow.value as ReflowMode));
   els.fixBtn.textContent = "정리됨 ✓";
   setTimeout(() => (els.fixBtn.textContent = "규칙 정리"), 1500);
 });

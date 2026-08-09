@@ -1,4 +1,5 @@
 import { BookNote, GraphBasis } from "./types";
+import { renderBodyHTML } from "./render-body";
 // three.js를 쓰는 두 뷰(큐브·은하)는 동적 import — 메인 번들에서 three가
 // 빠지고, 그래프가 실제로 그려질 때만 로드된다.
 import type { GraphHandle } from "./graphView";
@@ -2345,16 +2346,6 @@ function renderRatingEl(rating: number): HTMLElement {
   return wrap;
 }
 
-// Bold span: may run across lines and contain an inner single-* italic
-// (rendered as nested <strong><em>). Only `**` closes it.
-const BOLD_HTML = /\*\*((?:[^*]|\*(?!\*))+?)\*\*/g;
-// Italic: a single *…* span. Applied AFTER bold so the ** are already gone.
-const ITALIC_HTML = /\*([^*\n]+?)\*/g;
-// Subheadings (## / ### / #### Title) — used inside page bodies of short-story
-// collections etc. We accept 1–4 hashes with a required trailing space so a
-// mistyped level (## or ####) or a heading that hugs the previous line still
-// reads as a subheading instead of leaking raw `#`s into the prose. `#####` is
-// the page marker (5 hashes), parsed away earlier and never reaches here.
 // Display label for a tag: underscores read as spaces (e.g. 민음사_세계문학전집
 // → "민음사 세계문학전집"). The underscore stays in the stored/matched value.
 function tagLabel(t: string): string {
@@ -2383,7 +2374,7 @@ function bodyPreview(b: BookNote, max = 140): string {
     .replace(/!\[[^\]]*\]\([^)]*\)/g, "") // ![alt](url) images
     .replace(/\*\*([^*]+)\*\*/g, "$1") // **bold**
     .replace(/\*([^*\n]+)\*/g, "$1") // *italic*
-    .replace(/^#{1,4}[ \t]+/gm, "") // # … #### heading prefix
+    .replace(/^#{1,4}(?!#)[ \t]*/gm, "") // # … #### heading prefix (공백 누락 관용)
     .replace(/^>\s?/gm, "") // > quote prefix
     .replace(/\s+/g, " ")
     .trim();
@@ -2416,80 +2407,3 @@ function backlinksFor(book: BookNote, all: BookNote[]): BookNote[] {
   return out;
 }
 
-const SUBHEADING_HTML = /^#{1,4}[ \t]+(.+?)[ \t]*$/gm;
-const EMBED = /!\[\[([^\]]+)\]\]/g; // ![[Note]] / ![[Note#sec|alias]] / ![[img.png]]
-const MD_IMAGE = /!\[([^\]]*)\]\(([^)\s]+)\)/g; // ![alt](url)
-const IMG_EXT = /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i;
-
-/**
- * Render a page body to HTML.
- * - `![[Note]]` transclusions show like a `>` quote (the referenced note's
- *   text pulled in when `resolveEmbed` finds it, else just the name).
- * - Images (`![alt](url)` and `![[img.png]]`) are stripped out — not shown.
- * - `### Title` → subheading, `**bold**` → highlight, big gaps → skip.
- */
-function renderBodyHTML(
-  body: string,
-  resolveEmbed?: (name: string) => string | null,
-  depth = 0,
-): string {
-  let html = body.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  // --- Line-anchored block conversions first, while line starts are still
-  // intact. Both rely on `^`, so they must run before any newline-stripping
-  // below (otherwise a heading sitting directly on top of a quote would be
-  // glued to it and the `^&gt;` quote pass would no longer match). ---
-  // # … #### Title → block subheading (before bold so its text can hold **bold**).
-  html = html.replace(SUBHEADING_HTML, '<span class="dokki-subheading">$1</span>');
-  // `> quote` lines → a quote box. `>` was escaped to `&gt;` above. Consecutive
-  // `>` lines (incl. empty `>` lines used as line breaks) form one box; a line
-  // without `>` ends it, so blank-line-separated groups become separate boxes.
-  html = html.replace(/(?:^&gt;[^\n]*(?:\n|$))+/gm, (block: string) => {
-    const inner = block
-      .replace(/\n+$/, "")
-      .split("\n")
-      .map((l) => l.replace(/^&gt;[ \t]?/, ""))
-      .join("\n")
-      .replace(/^\n+|\n+$/g, ""); // trim blank edges inside the box
-    return `<span class="dokki-panel-external dokki-blockquote">${inner}</span>`;
-  });
-  // --- Now strip the blank lines the user happened to type around each block
-  // piece, on BOTH sides, so its vertical spacing is owned solely by CSS
-  // margins (consistent regardless of authoring) rather than by stray newlines
-  // stacking on top of the margins. A heading gets a wide top / tight bottom
-  // gap from .dokki-subheading; a quote box an even gap from .dokki-blockquote. ---
-  html = html
-    .replace(/(<span class="dokki-subheading">[^<]*<\/span>)\n+/g, "$1")
-    .replace(/\n+(<span class="dokki-subheading">)/g, "$1")
-    .replace(/(<span class="dokki-panel-external dokki-blockquote">[\s\S]*?<\/span>)\n+/g, "$1")
-    .replace(/\n+(<span class="dokki-panel-external dokki-blockquote">)/g, "$1");
-  // ![[…]] embeds → quote-styled block (display:block span, valid inside <pre>).
-  html = html.replace(EMBED, (_m, inner: string) => {
-    const name = inner.split("|")[0].split("#")[0].trim();
-    if (IMG_EXT.test(name)) return ""; // images are not shown
-    const resolved = depth < 1 && resolveEmbed ? resolveEmbed(name) : null;
-    const innerHtml = resolved != null ? renderBodyHTML(resolved, undefined, depth + 1) : name;
-    return `<span class="dokki-panel-external dokki-embed">${innerHtml}</span>`;
-  });
-  // Embed spacing is owned by .dokki-embed margins too — drop a blank line
-  // typed right before it. (The closing side is left alone: an embed body is
-  // recursively rendered and may itself contain `</span>`, which a greedy
-  // match would mis-pair — the bottom margin handles that gap on its own.)
-  html = html.replace(/\n+(<span class="dokki-panel-external dokki-embed">)/g, "$1");
-  // [[Note]] / [[Note#sec|alias]] → a clickable link to that note (the [[ ]]
-  // markup is hidden). The panel resolves the target on click and opens it;
-  // links to notes not in the library simply do nothing. Runs after EMBED so
-  // the `![[…]]` form is already consumed and only plain wikilinks remain.
-  html = html.replace(/\[\[([^\][]+)\]\]/g, (_m, inner: string) => {
-    const target = inner.split("|")[0].split("#")[0].trim();
-    const alias = inner.includes("|") ? inner.slice(inner.indexOf("|") + 1).trim() : "";
-    const label = alias || target;
-    return `<a class="dokki-wikilink" data-target="${target.replace(/"/g, "&quot;")}">${label}</a>`;
-  });
-  // ![alt](url) → images are not shown; strip them out entirely.
-  html = html.replace(MD_IMAGE, "");
-  // 3+ newlines = intentional skip; a single blank line is a paragraph break.
-  html = html.replace(/\n{3,}/g, '<span class="dokki-skip" aria-hidden="true"></span>');
-  // Bold first (rendering any nested *italic* inside it), then standalone italics.
-  html = html.replace(BOLD_HTML, (_m, inner: string) => `<strong>${inner.replace(ITALIC_HTML, "<em>$1</em>")}</strong>`);
-  return html.replace(ITALIC_HTML, "<em>$1</em>");
-}
